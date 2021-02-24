@@ -33,17 +33,27 @@ female <- zip_data %>%
 
 total_long <- bind_rows(male, female)
 
-school_age <- c("5 to 9 years",
+school_age <- c("Under 5 years",
+                "5 to 9 years",
                 "10 to 14 years",
                 "15 to 17 years",
                 "18 to 19 years")
 
 totals_zip <- total_long %>%
   filter(group %in% school_age) %>%
-  group_by(zcta) %>%
+  group_by(zcta, group) %>%
   summarise(total = sum(value))
 
 source("rc_by_zip.R")
+
+all_w_zip <- zip_rc %>%
+  filter(school_year == "2018-19") %>%
+  select(school_year:accurate_agency_type,
+         overall_score:overall_rating,
+         school_enrollment,
+         zip) %>%
+  filter(!is.na(zip)) %>%
+  write_csv(., "Schools with RC and ZIP.csv")
 
 z <- zip_rc %>%
   filter(school_year == "2018-19" & overall_score >= 73.0) %>%
@@ -55,29 +65,95 @@ t <- left_join(totals_zip %>%
             select(zip, total), 
           z) %>%
   mutate_all(replace_na, replace = 0) %>%
-  mutate(difference = total - quality_seats)
+  group_by(zip) %>%
+  summarise(total = sum(total),
+            quality_seats = sum(quality_seats)) %>%
+  ungroup() %>%
+  mutate(difference = total - quality_seats,
+         hq_perc = quality_seats / sum(quality_seats),
+         pop_perc = total / sum(total))
 
-t %>%
-  select(zip,
-         "total_school_age_population" = total,
-         quality_seats,
-         difference) %>%
-  write_csv(. , "../000_data_temp/quality_seats_by_zip.csv")
+# Total Population
 
 full_sf %>%
   left_join(., t) %>%
-  ggplot(aes(fill = difference)) +
+  arrange(desc(pop_perc)) %>%
+  mutate(rn = row_number(),
+         label = zip) %>%
+  ggplot(aes(fill = pop_perc, label = label, geometry = geometry)) +
   geom_sf(color = "white") +
   theme_void(base_family = "serif") +
-  scale_fill_continuous(labels = scales::comma) +
-  labs(fill = "Difference",
-       title = str_wrap("Difference between High Quality Seats and School-Aged Children by ZIP Code", 45),
-       subtitle = "High-Quality = 4 or 5 stars; School-Aged = 5 to 19 years old",
-       caption = "Sources: ACS 2019 5-Year and 2018-19 School Report Cards.")
+  scale_fill_viridis_c(option = "plasma", labels = c("More Kids", "Fewer Kids"),
+                       breaks = c(.12, .01),
+                       limits = c(0, .13)) +
+  labs(fill = "") +
+  theme(legend.text = element_text(size = 14))
 
-make_mke_rc() %>%
-  filter(school_year == "2018-19") %>%
-  select(school_name,
-         school_enrollment,
-         accurate_agency_type) %>%
-  write_csv(. , "../000_data_temp/school_enrollment_per_rc_201819.csv")
+# HQ Seats
+
+full_sf %>%
+  left_join(., t) %>%
+  arrange(desc(hq_perc)) %>%
+  mutate(rn = row_number(),
+         label = ifelse(rn < 5 | zip == "53206", zip, "")) %>%
+  ggplot(aes(fill = hq_perc, label = label)) +
+  geom_sf(color = "white") +
+  scale_color_manual(values = rev(c("white", "black")), guide = "none") +
+  theme_void(base_family = "serif") +
+  scale_fill_viridis_c(option = "plasma",  labels = c("More HQ Seats", "Fewer HQ Seats"),
+                       breaks = c(.12, .01),
+                       limits = c(0, .13)) +
+  labs(fill = "") +
+  theme(legend.text = element_text(size = 14))
+
+# Difference
+
+full_sf %>%
+  left_join(., t) %>%
+  arrange(desc(difference)) %>%
+  ggplot(aes(fill = difference)) +
+  geom_sf(color = "white") +
+  scale_color_manual(values = c("white", "black"), guide = "none") +
+  theme_void(base_family = "serif") +
+  scale_fill_viridis_c(option = "plasma", breaks = c(6000, -10000), 
+                       labels = c("More kids than HQ seats","More HQ seats than kids")) +
+  labs(fill = "") +
+  theme(legend.text = element_text(size = 14))
+
+
+# Extremes
+
+t %>%
+  arrange(desc(difference)) %>%
+  mutate(rn = row_number()) %>%
+  filter(rn < 6 | rn > nrow(t) - 5) %>%
+  ggplot(aes(reorder(zip, difference), difference)) +
+  geom_col()
+
+
+# By age group
+
+  t <- left_join(totals_zip %>%
+                   mutate("zip" = as.character(zcta)) %>%
+                   select(zip, total, group), 
+                 z) %>%
+    mutate_all(replace_na, replace = 0) %>%
+    group_by(zip, group) %>%
+    summarise(total = sum(total),
+              quality_seats = sum(quality_seats)) %>%
+    ungroup() %>%
+    group_by(group) %>%
+    mutate(pop_perc = total / sum(total))
+  
+  full_sf %>%
+    left_join(., t) %>%
+    arrange(desc(pop_perc)) %>%
+    mutate(rn = row_number(),
+           label = ifelse(rn < 5 | zip == "53206", zip, "")) %>%
+    ggplot(aes(fill = pop_perc, label = label)) +
+    geom_sf(color = "white") +
+    theme_void(base_family = "serif") +
+    scale_fill_viridis_c(option = "plasma") +
+    labs(fill = "") +
+    facet_grid(~ group)
+  
