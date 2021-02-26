@@ -52,8 +52,16 @@ all_w_zip <- zip_rc %>%
          overall_score:overall_rating,
          school_enrollment,
          zip) %>%
-  filter(!is.na(zip)) %>%
-  write_csv(., "Schools with RC and ZIP.csv")
+  filter(!is.na(zip)) # %>%
+# write_csv(., "Schools with RC and ZIP.csv")
+
+ed_zip_rc <- zip_rc %>%
+  filter(school_year == "2018-19") %>%
+  mutate(est_ed = school_enrollment * per_ed) %>%
+  group_by(zip) %>%
+  summarise(ed = sum(est_ed, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(perc = ed / sum(ed))
 
 z <- zip_rc %>%
   filter(school_year == "2018-19" & overall_score >= 73.0) %>%
@@ -72,6 +80,14 @@ t <- left_join(totals_zip %>%
   mutate(difference = total - quality_seats,
          hq_perc = quality_seats / sum(quality_seats),
          pop_perc = total / sum(total))
+
+ted <- left_join(totals_zip %>%
+                   mutate("zip" = as.character(zcta)) %>%
+                   select(zip, total), 
+                 ed_zip_rc) %>%
+  mutate_all(replace_na, replace = 0) %>%
+  select(zip, perc) %>%
+  unique()
 
 # Total Population
 
@@ -133,27 +149,41 @@ t %>%
 
 # By age group
 
-  t <- left_join(totals_zip %>%
-                   mutate("zip" = as.character(zcta)) %>%
-                   select(zip, total, group), 
-                 z) %>%
-    mutate_all(replace_na, replace = 0) %>%
-    group_by(zip, group) %>%
-    summarise(total = sum(total),
-              quality_seats = sum(quality_seats)) %>%
-    ungroup() %>%
-    group_by(group) %>%
-    mutate(pop_perc = total / sum(total))
+t <- left_join(totals_zip %>%
+                 mutate("zip" = as.character(zcta)) %>%
+                 select(zip, total, group), 
+               z) %>%
+  mutate_all(replace_na, replace = 0) %>%
+  group_by(zip, group) %>%
+  summarise(total = sum(total),
+            quality_seats = sum(quality_seats)) %>%
+  ungroup() %>%
+  group_by(group) %>%
+  mutate(pop_perc = total / sum(total))
+
+full_sf %>%
+  left_join(., t) %>%
+  arrange(desc(pop_perc)) %>%
+  mutate(rn = row_number(),
+         label = ifelse(rn < 5 | zip == "53206", zip, "")) %>%
+  ggplot(aes(fill = pop_perc, label = label)) +
+  geom_sf(color = "white") +
+  theme_void(base_family = "serif") +
+  scale_fill_viridis_c(option = "plasma") +
+  labs(fill = "") +
+  facet_grid(~ group)
   
-  full_sf %>%
-    left_join(., t) %>%
-    arrange(desc(pop_perc)) %>%
-    mutate(rn = row_number(),
-           label = ifelse(rn < 5 | zip == "53206", zip, "")) %>%
-    ggplot(aes(fill = pop_perc, label = label)) +
-    geom_sf(color = "white") +
-    theme_void(base_family = "serif") +
-    scale_fill_viridis_c(option = "plasma") +
-    labs(fill = "") +
-    facet_grid(~ group)
+# By ed status
+
+full_sf %>%
+  left_join(., ted) %>%
+  arrange(desc(perc)) %>%
+  ggplot(aes(fill = perc)) +
+  geom_sf(color = "white") +
+  scale_color_manual(values = c("white", "black"), guide = "none") +
+  theme_void(base_family = "serif") +
+  scale_fill_viridis_c(option = "plasma", breaks = c(.01, max(ted$perc - .01)),
+                       labels = c("Fewer Ec. Disadv. Students", "More Ec. Disadv. Students")) +
+  labs(fill = "") +
+  theme(legend.text = element_text(size = 14))
   
