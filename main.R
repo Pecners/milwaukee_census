@@ -1,9 +1,13 @@
 library(tidyverse)
 
-zip_data <- read_csv("data/mke_zip_census_sex_age.csv")
-names(zip_data)[3:100] <- str_replace(names(zip_data)[3:100], "B01001", "B01001_")
+t <- "B01001"
 
-data_names <- read_csv("data/ACS2019_Table_Shells.csv")
+zip_data <- read_csv("data/mke_zip_census_sex_age.csv")
+
+names(zip_data)[3:length(zip_data)] <- str_replace(names(zip_data)[3:length(zip_data)], t, paste0(t, "_"))
+
+data_names <- read_csv("data/ACS2019_Table_Shells.csv") %>%
+  filter(`Table ID` == t & !is.na(Line))
 
 for (i in 1:nrow(data_names)) {
   
@@ -37,12 +41,34 @@ school_age <- c("Under 5 years",
                 "5 to 9 years",
                 "10 to 14 years",
                 "15 to 17 years",
-                "18 to 19 years")
+                "18 and 19 years")
 
 totals_zip <- total_long %>%
   filter(group %in% school_age) %>%
   group_by(zcta, group) %>%
   summarise(total = sum(value))
+
+z_top_4 <- c("53218",
+             "53209",
+             "53215",
+             "53204")
+
+totals_zip %>%
+  modify_at("zcta", as.character) %>%
+  group_by(top_4 = zcta %in% z_top_4, group) %>%
+  summarise(total = sum(total)) %>%
+  ungroup() %>%
+  group_by(top_4) %>%
+  mutate(perc = total / sum(total)) %>%
+  select(-total) %>%
+  pivot_wider(names_from = top_4, values_from = perc)
+
+totals_zip %>%
+  modify_at("zcta", as.character) %>%
+  group_by(group) %>%
+  summarise(total = sum(total)) %>%
+  ungroup() %>%
+  mutate(perc = total / sum(total))
 
 source("rc_by_zip.R")
 
@@ -61,12 +87,25 @@ ed_zip_rc <- zip_rc %>%
   group_by(zip) %>%
   summarise(ed = sum(est_ed, na.rm = TRUE)) %>%
   ungroup() %>%
-  mutate(perc = ed / sum(ed))
+  mutate(perc_ed_enr = ed / sum(ed))
 
 z <- zip_rc %>%
   filter(school_year == "2018-19" & overall_score >= 73.0) %>%
   group_by(zip) %>%
   summarise(quality_seats = sum(school_enrollment))
+
+zip_rc %>%
+  filter(zip %in% c("53204", "53207") & overall_score >= 73.0 & school_year == "2018-19") %>%
+  summarise(black = weighted.mean(per_b_aa, w = school_enrollment),
+            hisp = weighted.mean(per_hisp_lat, w = school_enrollment),
+            white = weighted.mean(per_white, w = school_enrollment)) 
+  select(dpi_true_id, school_enrollment,
+         per_b_aa,
+         per_hisp_lat,
+         per_asian,
+         per_white) %>%
+  pivot_longer(cols = -c(1:2), names_to = "group", values_to = "perc") %>%
+  mutate(estimate = school_enrollment * perc)
 
 t <- left_join(totals_zip %>%
             mutate("zip" = as.character(zcta)) %>%
@@ -75,18 +114,19 @@ t <- left_join(totals_zip %>%
   mutate_all(replace_na, replace = 0) %>%
   group_by(zip) %>%
   summarise(total = sum(total),
-            quality_seats = sum(quality_seats)) %>%
+            quality_seats = mean(quality_seats)) %>%
   ungroup() %>%
   mutate(difference = total - quality_seats,
          hq_perc = quality_seats / sum(quality_seats),
-         pop_perc = total / sum(total))
+         pop_perc = total / sum(total),
+         perc_diff = pop_perc - hq_perc)
 
 ted <- left_join(totals_zip %>%
                    mutate("zip" = as.character(zcta)) %>%
                    select(zip, total), 
                  ed_zip_rc) %>%
   mutate_all(replace_na, replace = 0) %>%
-  select(zip, perc) %>%
+  select(zip, perc_ed_enr) %>%
   unique()
 
 # Total Population
@@ -126,15 +166,17 @@ full_sf %>%
 
 full_sf %>%
   left_join(., t) %>%
-  arrange(desc(difference)) %>%
-  ggplot(aes(fill = difference)) +
+  mutate(diff = case_when(difference < 5000 ~ "Less than 5,000",
+                          difference > 4999 & difference < 10001 ~ "5,000 - 10,000",
+                          TRUE ~ "10,000+")) %>%
+  ggplot(aes(fill = diff)) +
   geom_sf(color = "white") +
   scale_color_manual(values = c("white", "black"), guide = "none") +
   theme_void(base_family = "serif") +
-  scale_fill_viridis_c(option = "plasma", breaks = c(6000, -10000), 
-                       labels = c("More kids than HQ seats","More HQ seats than kids")) +
-  labs(fill = "") +
-  theme(legend.text = element_text(size = 14))
+  scale_fill_viridis_d(option = "plasma", direction = -1) +
+  labs(fill = "Deficit of HQ Seats") +
+  theme(legend.text = element_text(size = 14),
+        legend.title = element_text(size = 15))
 
 
 # Extremes
@@ -156,7 +198,7 @@ t <- left_join(totals_zip %>%
   mutate_all(replace_na, replace = 0) %>%
   group_by(zip, group) %>%
   summarise(total = sum(total),
-            quality_seats = sum(quality_seats)) %>%
+            quality_seats = mean(quality_seats)) %>%
   ungroup() %>%
   group_by(group) %>%
   mutate(pop_perc = total / sum(total))
