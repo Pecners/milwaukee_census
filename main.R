@@ -143,7 +143,12 @@ full_sf %>%
                        breaks = c(.12, .01),
                        limits = c(0, .13)) +
   labs(fill = "") +
-  theme(legend.text = element_text(size = 14))
+  theme(legend.text = element_text(size = 14),
+        plot.caption = element_text(hjust = 0)) +
+  labs(title = "ZIP Code Residence of Milwaukee School-Aged Population",
+       subtitle = "Boundaries represent ZIP Code Tabulation Areas",
+       caption = paste("School-aged defined as 19 years old and under.",
+                       "Source: US Census Bureau 2019 ACS 5-Year Data", sep = "\n"))
 
 # HQ Seats
 
@@ -160,7 +165,12 @@ full_sf %>%
                        breaks = c(.12, .01),
                        limits = c(0, .13)) +
   labs(fill = "") +
-  theme(legend.text = element_text(size = 14))
+  theme(legend.text = element_text(size = 14),
+        plot.caption = element_text(hjust = 0)) +
+  labs(title = "Distribution of High Quality Seats",
+       subtitle = "Boundaries represent ZIP Code Tabulation Areas",
+       caption = paste("High quality defined as 'Exceeds Expecations' or 'Significantly Exceeds Expectations'.",
+                       "Source: 2018-19 School Report Cards, Wisconsin DPI", sep = "\n"))
 
 # Difference
 
