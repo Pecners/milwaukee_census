@@ -48,6 +48,11 @@ totals_zip <- total_long %>%
   group_by(zcta, group) %>%
   summarise(total = sum(value))
 
+totals_zip %>%
+  group_by(zcta) %>%
+  summarise(all = sum(total)) %>%
+  filter(zcta == "53206")
+
 z_top_4 <- c("53218",
              "53209",
              "53215",
