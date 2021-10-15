@@ -26,17 +26,46 @@ clean_zip <- full_dir %>%
          zip = ifelse(str_length(zip_4) == 5, zip_4, str_extract(zip_4, "^\\d{5}"))) %>%
   select(dpi_true_id, zip)
 
-mke_rc <- make_mke_rc()
 
-zip_rc <- left_join(mke_rc, clean_zip)
 
 zip_sf <- st_read("shapefiles/zcta/cb_2018_us_zcta510_500k.shp")
 mke_sf <- st_read("shapefiles/Milwaukee/citylimit.shp")
+
 
 mke_sf <- st_transform(mke_sf, crs = st_crs(zip_sf))
 
 full_sf <- st_intersection(zip_sf, mke_sf)
 
+zip_mke_sf <- zip_sf %>%
+  filter(ZCTA5CE10 %in% full_sf$ZCTA5CE10) %>%
+  st_transform(., crs = st_crs(mke_sf))
+
 names(full_sf)[1] <- "zip"
+
+z <- clean_zip %>%
+  filter(zip %in% full_sf$zip)
+
+wi_rc <- make_wi_rc(exclude_milwaukee = FALSE)
+
+zip_rc <- left_join(wi_rc, z)
+
+mke_rc <- make_mke_rc()
+
+per_zip_in_city <- map_dbl(1:nrow(full_sf), function(x) {
+  
+  zip <- full_sf[[x, "zip"]]
+  
+  o <- zip_sf %>%
+    filter(ZCTA5CE10 == zip)
+  
+  one_zip <- st_intersection(o, mke_sf)
+  
+  per_zip_in_city <- as.numeric(st_area(one_zip) / st_area(o))
+  
+  return(per_zip_in_city)
+  
+})
+
+full_sf <- bind_cols(full_sf, "per_zip_in_city" = per_zip_in_city)
 
 setwd("../milwaukee_census")

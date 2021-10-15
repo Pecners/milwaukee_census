@@ -48,10 +48,16 @@ totals_zip <- total_long %>%
   group_by(zcta, group) %>%
   summarise(total = sum(value))
 
+under_18_comp <- totals_zip %>%
+  filter(group != "18 and 19 years") %>%
+  group_by(zip = zcta) %>%
+  summarise(total_under18 = sum(total)) %>%
+  right_join(., adj_zip_totals)
+
 totals_zip %>%
   group_by(zcta) %>%
   summarise(all = sum(total)) %>%
-  filter(zcta == "53206")
+  filter(zcta == "53209")
 
 z_top_4 <- c("53218",
              "53209",
@@ -112,19 +118,17 @@ zip_rc %>%
   pivot_longer(cols = -c(1:2), names_to = "group", values_to = "perc") %>%
   mutate(estimate = school_enrollment * perc)
 
-t <- left_join(totals_zip %>%
-            mutate("zip" = as.character(zcta)) %>%
-            select(zip, total), 
+# using 2020 ward-adjusted zip totals under 18
+  
+t <- left_join(adj_zip_totals %>%
+            mutate("zip" = as.character(zip)) %>%
+            select(zip, estimate), 
           z) %>%
   mutate_all(replace_na, replace = 0) %>%
   group_by(zip) %>%
-  summarise(total = sum(total),
+  summarise(total = sum(estimate),
             quality_seats = mean(quality_seats)) %>%
-  ungroup() %>%
-  mutate(difference = total - quality_seats,
-         hq_perc = quality_seats / sum(quality_seats),
-         pop_perc = total / sum(total),
-         perc_diff = pop_perc - hq_perc)
+  ungroup()
 
 ted <- left_join(totals_zip %>%
                    mutate("zip" = as.character(zcta)) %>%
@@ -181,7 +185,12 @@ full_sf %>%
 
 full_sf %>%
   left_join(., t) %>%
-  mutate(diff = case_when(difference < 5000 ~ "Less than 5,000",
+  mutate(adj_total = total * per_zip_in_city,
+        difference = total - quality_seats,
+        hq_perc = quality_seats / sum(quality_seats),
+        pop_perc = total / sum(total),
+        perc_diff = pop_perc - hq_perc,
+        diff = case_when(difference < 5000 ~ "Less than 5,000",
                           difference > 4999 & difference < 10001 ~ "5,000 - 10,000",
                           TRUE ~ "10,000+")) %>%
   ggplot(aes(fill = diff)) +
