@@ -46,10 +46,10 @@ z <- clean_zip %>%
   filter(zip %in% full_sf$zip)
 
 wi_rc <- make_wi_rc(exclude_milwaukee = FALSE)
-
-zip_rc <- left_join(wi_rc, z)
-
 mke_rc <- make_mke_rc()
+
+zip_rc <- left_join(mke_rc, z)
+
 
 per_zip_in_city <- map_dbl(1:nrow(full_sf), function(x) {
   
