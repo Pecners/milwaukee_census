@@ -76,6 +76,10 @@ adj_zip <- map_df(1:nrow(v_wards_dpi), function(x) {
   }
 })
 
+ward_zip_alloc <- adj_zip %>%
+  select(ward, zip, alloc)
+
+write_csv(ward_zip_alloc, "data/ward_zip_alloc.csv")
 
 az_totals <- adj_zip %>%
   mutate(zip = as.numeric(zip)) %>%
