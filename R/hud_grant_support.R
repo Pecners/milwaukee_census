@@ -1,5 +1,6 @@
 library(tidyverse)
 library(tidycensus)
+library(sf)
 
 # Get MKE Census Tract 2020 Counts for:
 # - Overall Demographics for each tract
@@ -32,10 +33,38 @@ tract_demo <- get_decennial(geography = "tract",
                             variables = demo_vars,
                             year = 2020,
                             state = "WI", 
-                            county = "Milwaukee") %>%
+                            county = "Milwaukee",
+                            geometry = TRUE) %>%
   filter(GEOID %in% hud_tracts$GEOID)
 
-calc_tract_demo <- tract_demo %>%
+our_zips <- c("53204",
+              "53209",
+              "53216",
+              "53218")
+
+city_limits <- st_read("../Shapefiles/Milwaukee/City Limits/citylimit.shp") %>%
+  st_transform(., crs = st_crs(4326))
+
+zcta <- readRDS("../strategic_regional_analysis/data/zcta_geometries.rda") %>%
+  st_transform(., crs = st_crs(4326))
+
+our_zips_geo <- zcta %>%
+  filter(ZCTA5CE10 %in% our_zips)
+
+
+tract_geo <- tract_demo %>%
+  select(GEOID, geometry) %>%
+  st_transform(., crs = st_crs(4326)) %>%
+  st_intersection(., our_zips_geo)
+
+
+td_our_zips <- tract_demo %>%
+  filter(GEOID %in% tract_geo$GEOID) %>%
+  select(GEOID, geometry) %>%
+  unique() 
+  
+calc_tract_demo <- td_our_zips %>%
+  as_tibble() %>%
   filter(!str_detect(variable, "Total")) %>%
   group_by(GEOID) %>%
   mutate(perc = value / sum(value)) %>%
@@ -45,11 +74,26 @@ calc_tract_demo <- tract_demo %>%
 
 # Tract under 18
 
-calc_tract_under <- tract_demo %>%
+calc_tract_under <- td_our_zips %>%
+  as_tibble() %>%
   filter(str_detect(variable, "Total")) %>%
   pivot_wider(names_from = variable, values_from = value) %>%
   mutate(`Under 18` = Total - `Total 18+`)
 
 all <- left_join(calc_tract_demo, calc_tract_under)
 
-write_csv(all, "data/hud_tract_demographics.csv")
+write_csv(all, "data/hud_tract_demographics_our_zips.csv")
+
+# Visual check of ZIPs in city
+
+city_limits %>%
+  ggplot() +
+  geom_sf(data = our_zips_geo, fill = "yellow", color = "yellow", alpha = 0.5, size = .1) +
+  
+  geom_sf(data = td_our_zips, fill = "red", color = "red", alpha = 0.5, size = .1) +
+  
+  geom_sf(fill = "blue", color = "blue", alpha = .1, size = .1) +
+  
+  
+  theme_void()
+
