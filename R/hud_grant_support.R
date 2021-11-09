@@ -39,6 +39,7 @@ tract_demo <- get_decennial(geography = "tract",
 
 our_zips <- c("53204",
               "53209",
+              "53215",
               "53216",
               "53218")
 
@@ -59,9 +60,7 @@ tract_geo <- tract_demo %>%
 
 
 td_our_zips <- tract_demo %>%
-  filter(GEOID %in% tract_geo$GEOID) %>%
-  select(GEOID, geometry) %>%
-  unique() 
+  filter(GEOID %in% tract_geo$GEOID)
   
 calc_tract_demo <- td_our_zips %>%
   as_tibble() %>%
@@ -86,11 +85,15 @@ write_csv(all, "data/hud_tract_demographics_our_zips.csv")
 
 # Visual check of ZIPs in city
 
+td_single_zip <- td_our_zips %>%
+  select(GEOID, geometry) %>%
+  unique()
+
 city_limits %>%
   ggplot() +
   geom_sf(data = our_zips_geo, fill = "yellow", color = "yellow", alpha = 0.5, size = .1) +
   
-  geom_sf(data = td_our_zips, fill = "red", color = "red", alpha = 0.5, size = .1) +
+  geom_sf(data = td_single_zip, fill = "red", color = "red", alpha = 0.5, size = .1) +
   
   geom_sf(fill = "blue", color = "blue", alpha = .1, size = .1) +
   
