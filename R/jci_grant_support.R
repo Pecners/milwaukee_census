@@ -2,6 +2,19 @@ library(tidyverse)
 library(sf)
 library(tidygeocoder)
 
+our_zips <- c("53204",
+              "53209",
+              "53215",
+              "53216",
+              "53218")
+
+
+zcta <- readRDS("../strategic_regional_analysis/data/zcta_geometries.rda") %>%
+  st_transform(., crs = st_crs(4326))
+
+our_zips_geo <- zcta %>%
+  filter(ZCTA5CE10 %in% our_zips)
+
 nbds <- read_sf("../Shapefiles/Milwaukee/Neighborhoods/neighborhood.shp") %>%
   st_transform(crs = 4326)
 
@@ -38,6 +51,7 @@ geo_schools <- read_csv("../000_data_temp/geocoded_mke_schools.csv") %>%
 
 school_in_focus <- st_intersection(geo_schools, st_buffer(st_union(f_n), units::set_units(.5, mi))) 
 
+# Schools
 
 school_in_focus %>%
   ggplot() +
@@ -51,6 +65,19 @@ sif_export <- school_in_focus %>%
   select(dpi_true_id, school_name)
 
 write_csv(sif_export, "data/sif_export.csv")
+
+# zips
+
+oz <- our_zips_geo %>%
+  filter(ZCTA5CE10 %in% c("53209", "53218"))
+
+f_n %>%
+  ggplot() +
+  geom_sf(data = oz, fill = "red", color = "red", alpha = .5, size = .1) +
+  geom_sf_text(data = oz, aes(label = ZCTA5CE10), size = 3) +
+  geom_sf(fill = "blue", color = "blue", alpha = .5, size = .1) +
+  geom_sf_text(aes(label = NEIGHBORHD), size = 2) +
+  theme_void()
 
 # FLI
 
